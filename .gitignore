@@ -1,6 +1,9 @@
 # ESPHome secrets — never commit real credentials
 secrets.yaml
 
+# Private documentation
+information.pdf
+
 # ESPHome build artifacts
 .esphome/
 build/

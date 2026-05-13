@@ -12,14 +12,14 @@ Enervent Pingvin Kotilämpö eAir — Waveshare ESP32-S3-RS485-CAN
 | USB-C cable | For initial flashing only |
 | 5 V USB power supply or USB-C charger | ≥ 500 mA; used for permanent power after flashing |
 | 2-conductor twisted-pair cable | Standard alarm/doorbell cable works; shielded is better |
-| Small flat-head screwdriver | For the Pingvin terminal block |
+| Small flat-head screwdriver | For the Pingvin terminal block screws |
 | Multimeter | Optional but helpful for verifying polarity |
 
 ---
 
 ## Step 1 — Flash the Firmware First
 
-Flash the device **before** mounting it inside the unit. It is much easier to connect via USB on your desk.
+Flash the device **before** mounting it near the unit. It is much easier to connect via USB on your desk.
 
 ```bash
 cp secrets.yaml.example secrets.yaml   # fill in your details
@@ -30,18 +30,37 @@ After the first successful flash, all future updates can be done over Wi-Fi (OTA
 
 ---
 
-## Step 2 — Locate the Modbus Connector on the Pingvin
+## Step 2 — Open the Pingvin Electronics Enclosure
 
-1. **Switch off power to the Pingvin unit** at the circuit breaker before opening the cover.
-2. Open the front panel of the Pingvin unit (two screws at the bottom).
-3. The motherboard (MD board) is visible on the right side of the unit.
-4. Look for the RS485 / Modbus terminal block — it is typically labeled **A / B** or **RS485** near the communication connectors along the edge of the board.
+The Pingvin unit has two distinct sections inside its cabinet:
 
-> **Caution:** The motherboard also carries mains voltage (230 V) on other connectors. Only touch the low-voltage RS485 terminals. When in doubt, consult the Enervent installation manual for your specific model.
+- **Air handling section** — contains the fans, heat exchanger and filters.
+- **Electronics enclosure** — a separate sealed box containing the motherboard (MD board), control electronics, and the RS485 Modbus connector.
+
+The RS485 connector is on the **motherboard inside the electronics enclosure**. You need to open the electronics enclosure, not just the air handling section.
+
+**Before opening:**
+
+1. **Switch off the Pingvin at the circuit breaker** — not just via the control panel. The motherboard carries 230 V mains on some connectors; full power isolation is required.
+2. Wait a moment for capacitors to discharge.
+3. Open the electronics enclosure per the Enervent installation manual for your model (typically screws on the enclosure lid).
+
+> **Caution:** Only handle the low-voltage RS485/Modbus terminals on the motherboard. The mains (230 V) connectors are on the same board. If you are unsure which terminals are which, consult the Enervent eAir installation guide before touching anything.
 
 ---
 
-## Step 3 — Prepare the Cable
+## Step 3 — Locate the RS485 Connector on the Motherboard
+
+The RS485 Modbus connector on the MD motherboard is a **pluggable terminal block** — it consists of two parts:
+
+- A **fixed header** soldered to the board.
+- A **removable plug** that you pull out, wire up, and push back in.
+
+Look for the connector labelled **A / B** or **RS485** along the edge of the motherboard. Pull the removable plug straight out of its header before attaching your cable — it is easier to work with off the board.
+
+---
+
+## Step 4 — Prepare the Cable
 
 Cut your twisted-pair cable to the required length (from the Pingvin to wherever you will mount the ESP32 board).
 
@@ -51,19 +70,23 @@ Cut your twisted-pair cable to the required length (from the Pingvin to wherever
 
 ---
 
-## Step 4 — Connect to the Pingvin Motherboard
+## Step 5 — Wire the Pingvin Connector Plug
 
-| Cable conductor | Pingvin terminal |
+Insert the conductors into the **removable plug** (pulled out in Step 3) and tighten the screws firmly. Give each wire a gentle tug to confirm it is held.
+
+| Cable conductor | Plug terminal |
 |---|---|
 | Conductor 1 (e.g. white) | **A** (non-inverting, sometimes marked **+**) |
 | Conductor 2 (e.g. black) | **B** (inverting, sometimes marked **−**) |
-| Shield / GND (if shielded) | **GND** terminal next to A/B (if present) |
+| Shield / GND (if shielded) | **GND** terminal (if present on plug) |
 
-Insert each wire into the terminal, tighten the screw firmly, and give a gentle tug to confirm it is held.
+> **Do not cross the wires.** A connects to A and B connects to B at both ends of the cable. Crossing them is the most common mistake and produces no response from the device.
+
+Once wired, push the plug back into the fixed header on the motherboard until it clicks or seats fully.
 
 ---
 
-## Step 5 — Connect to the Waveshare ESP32 Board
+## Step 6 — Connect to the Waveshare ESP32 Board
 
 The Waveshare ESP32-S3-RS485-CAN board exposes the RS485 bus on a screw-terminal block labelled **A** and **B** (and GND).
 
@@ -81,37 +104,37 @@ B  (inverting)      ──────►  B
 GND / Shield        ──────►  GND  (one end only)
 ```
 
-> **Polarity matters on RS485.** If the connection appears to work but returns garbage data or no response, swap the A and B wires — it is the most common first mistake.
+> **If the connection produces no data or garbage values**, the most likely cause is swapped A/B polarity. Swap the two conductors at either end and try again.
 
 ---
 
-## Step 6 — Bus Termination
+## Step 7 — Bus Termination
 
 RS485 buses require a **120 Ω termination resistor at each physical end** of the cable to prevent signal reflections.
 
 | Scenario | Action |
 |---|---|
 | Only the ESP32 and the Pingvin on the bus (point-to-point, most common) | Enable the 120 Ω jumper on the Waveshare board. The Pingvin has its own internal termination. |
-| Other RS485 devices are also connected (e.g. room panels on the same bus segment) | Only the two devices at the **physical ends** of the cable get termination. Do not enable the jumper on intermediate nodes. |
+| Other RS485 devices also on the same bus segment | Only the two devices at the **physical ends** of the cable get termination. Do not enable the jumper on intermediate nodes. |
 
 **To enable termination on the Waveshare board:**
-Locate the solder jumper or pin header labelled **120R** or **Term** on the board and close/enable it per the board's silkscreen or Waveshare wiki.
+Locate the solder jumper or pin header labelled **120R** or **Term** and close/enable it per the board's silkscreen or Waveshare wiki.
 
 ---
 
-## Step 7 — Power the ESP32
+## Step 8 — Power the ESP32
 
-After wiring, connect a 5 V USB-C power supply to the Waveshare board. You can:
+Connect a 5 V USB-C power supply to the Waveshare board:
 
-- Route a USB-C cable from a nearby USB charger or USB port on your router/NAS.
-- Mount the board inside the Pingvin enclosure if space allows — the unit has a 12 V or 24 V auxiliary supply on the motherboard, but you would need a small DC-DC converter to step down to 5 V. **The simplest option is an external USB charger.**
+- A standard USB-C phone charger next to the unit is the simplest option.
+- The Pingvin motherboard has auxiliary low-voltage power, but using it requires a DC-DC converter and is not recommended for a first installation.
 
 ---
 
-## Step 8 — Verify the Connection
+## Step 9 — Verify the Connection
 
 1. Restore power to the Pingvin at the circuit breaker.
-2. Watch the ESPHome device logs (via `esphome logs pingvin_ventilation.yaml` or the Home Assistant ESPHome add-on).
+2. Watch the ESPHome device logs via `esphome logs pingvin_ventilation.yaml` or the Home Assistant ESPHome add-on.
 3. A successful Modbus session looks like:
 
 ```
@@ -121,17 +144,30 @@ After wiring, connect a 5 V USB-C power supply to the Waveshare board. You can:
 ```
 
 4. If you see repeated `No response from slave` errors:
-   - Double-check A/B polarity (swap if needed).
-   - Verify the Pingvin Modbus address is 1 (default) in its settings menu.
-   - Confirm baud rate is 19200 in the Pingvin settings (Communication → Modbus speed).
+   - Swap A and B wires (polarity).
+   - Confirm Modbus slave address is 1 in the Pingvin settings menu.
+   - Confirm baud rate is 19200 in Pingvin settings (Communication → Modbus speed).
+   - Check that the removable connector plug is fully seated in the board header.
 
 ---
 
 ## Mounting the ESP32 Board
 
-- Keep the board away from mains wiring inside the Pingvin — maintain at least a few centimetres of separation.
+- Keep the board away from mains wiring — maintain at least a few centimetres of separation from any 230 V cables.
 - The board has mounting holes; use nylon standoffs if attaching to a metal surface to avoid shorts.
-- Ensure Wi-Fi signal can reach the board. Metal enclosures can attenuate the signal; you may need to route the antenna outside the unit or mount the board on the exterior of the enclosure.
+- Metal enclosures can attenuate the Wi-Fi signal significantly. If signal is weak, mount the board on the **exterior** of the electronics enclosure, or route just the RS485 cable through a small hole.
+
+---
+
+## Known Limitations of the Modbus Interface
+
+These were confirmed by real-world testing on the Pingvin eAir (Rankinen, OAMK thesis 2023):
+
+- **Most holding registers are effectively read-only.** Even though Modbus protocol allows writing them and the device acknowledges the write, most register values revert immediately to their previous state. The manufacturer has restricted external control via RS485.
+- **The temperature setpoint (hreg 135) is the only holding register confirmed writable** from external Modbus.
+- **Fan speed cannot be set directly.** Only operating modes (coils) can be changed, which indirectly affects fan speed.
+- **Some coils are mutually exclusive** — only one mode-state coil can be active at a time (e.g. Away, Max Heating, Max Cooling). The Pingvin firmware enforces this; if you force one on, any conflicting modes are automatically cleared.
+- **Mode changes time out automatically.** The Pingvin reverts boosted modes (Manual Boost, Max Heating, etc.) after a built-in timer expires. The timer cannot be disabled via Modbus.
 
 ---
 
@@ -148,3 +184,5 @@ After wiring, connect a 5 V USB-C power supply to the Waveshare board. You can:
 | Flow control pin | GPIO21 (DE/RE) |
 | ESP32 supply voltage | 5 V via USB-C |
 | Termination resistor | 120 Ω at each end of the bus |
+| Connector type on Pingvin MB | Pluggable screw terminal block (removable plug) |
+| Confirmed writable register | hreg 135 — supply air temperature setpoint |
