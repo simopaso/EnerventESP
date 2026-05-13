@@ -572,10 +572,39 @@ number:
 #
 # Each coil is a single Modbus coil register (function codes
 # 01/05).  Writing true → 0xFF00, writing false → 0x0000.
+#
+# Coils are split into two groups with different behaviour:
+#
+# ── Group A: Operational mode triggers (mutex + auto-timeout) ─
+#   Stop, Away, Away Long, Max Heating, Max Cooling,
+#   Manual Boost, and Temperature Boost are MUTUALLY EXCLUSIVE
+#   operating states.  The Pingvin firmware enforces this: if
+#   you activate one, any conflicting mode is automatically
+#   cleared by the unit — you do not need to clear it yourself.
+#
+#   IMPORTANT — auto-timeout: Max Heating, Max Cooling, Manual
+#   Boost and Temperature Boost revert automatically after a
+#   built-in Pingvin timer (duration adjustable in the unit's
+#   menu, but the timer cannot be fully disabled).  ESPHome
+#   will correct the displayed switch state on the next poll
+#   cycle (every 15 s).
+#
+#   IMPORTANT — max heating: to achieve full heating effect,
+#   enable BOTH "Temperature Boost" (coil 11) AND "Max Heating"
+#   (coil 6).  Coil 11 puts the fan into adaptive speed mode
+#   (required for the heating coil to ramp up); coil 6 then
+#   commands the unit to heat at maximum effect.
+#
+# ── Group B: Persistent feature settings (no mutex, no timeout)
+#   These are on/off feature flags that stay as set until you
+#   change them again.  They are independent of each other.
 # ============================================================
 switch:
 
-  # coil 0   COIL_STOP – Stop the ventilation unit
+  # ── Group A: Operational mode triggers ───────────────────
+  # (mutually exclusive; Max Heating/Cooling/Boost auto-timeout)
+
+  # coil 0   COIL_STOP – Stop the ventilation unit entirely
   - platform: modbus_controller
     modbus_controller_id: pingvin
     name: "Stop Machine"
@@ -584,7 +613,7 @@ switch:
     address: 0
     icon: "mdi:stop-circle-outline"
 
-  # coil 1   COIL_AWAY – Away mode (reduced ventilation)
+  # coil 1   COIL_AWAY – Away mode (reduced ventilation, persistent)
   - platform: modbus_controller
     modbus_controller_id: pingvin
     name: "Away Mode"
@@ -593,7 +622,7 @@ switch:
     address: 1
     icon: "mdi:home-export-outline"
 
-  # coil 2   COIL_AWAYL – Away long mode (extended absence)
+  # coil 2   COIL_AWAYL – Away long mode (extended absence, persistent)
   - platform: modbus_controller
     modbus_controller_id: pingvin
     name: "Away Long Mode"
@@ -602,7 +631,20 @@ switch:
     address: 2
     icon: "mdi:home-off-outline"
 
+  # coil 11  COIL_TEMP_BOOST_EN – Adaptive fan speed mode
+  # Enable this TOGETHER with coil 6 (Max Heating) for full heating effect.
+  # Auto-reverts after Pingvin timer expires.
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Temperature Boost"
+    id: sw_temp_boost
+    register_type: coil
+    address: 11
+    icon: "mdi:thermometer-high"
+
   # coil 6   COIL_MAX_H – Force maximum heating
+  # Enable TOGETHER with coil 11 (Temperature Boost) for full effect.
+  # Auto-reverts after Pingvin timer expires.
   - platform: modbus_controller
     modbus_controller_id: pingvin
     name: "Max Heating"
@@ -612,6 +654,7 @@ switch:
     icon: "mdi:fire"
 
   # coil 7   COIL_MAX_C – Force maximum cooling
+  # Auto-reverts after Pingvin timer expires.
   - platform: modbus_controller
     modbus_controller_id: pingvin
     name: "Max Cooling"
@@ -620,25 +663,8 @@ switch:
     address: 7
     icon: "mdi:snowflake"
 
-  # coil 8   COIL_CO2_BOOST_EN – Enable CO₂-triggered fan boost
-  - platform: modbus_controller
-    modbus_controller_id: pingvin
-    name: "CO₂ Boosting"
-    id: sw_co2_boost
-    register_type: coil
-    address: 8
-    icon: "mdi:molecule-co2"
-
-  # coil 9   COIL_RH_BOOST_EN – Enable humidity-triggered fan boost
-  - platform: modbus_controller
-    modbus_controller_id: pingvin
-    name: "Humidity Boosting"
-    id: sw_rh_boost
-    register_type: coil
-    address: 9
-    icon: "mdi:water-percent"
-
   # coil 10  COIL_M_BOOST – Manual boost: fans to 100% for a timed period
+  # Auto-reverts after Pingvin timer expires.
   - platform: modbus_controller
     modbus_controller_id: pingvin
     name: "Manual Boost (100%)"
@@ -647,16 +673,28 @@ switch:
     address: 10
     icon: "mdi:fan-chevron-up"
 
-  # coil 11  COIL_TEMP_BOOST_EN – Temperature boosting enabled
+  # ── Group B: Persistent feature settings ─────────────────
+  # (independent on/off flags; stay set until changed)
+
+  # coil 8   COIL_CO2_BOOST_EN – Enable CO₂-triggered automatic fan boost
   - platform: modbus_controller
     modbus_controller_id: pingvin
-    name: "Temperature Boost"
-    id: sw_temp_boost
+    name: "CO₂ Boosting"
+    id: sw_co2_boost
     register_type: coil
-    address: 11
-    icon: "mdi:thermometer-high"
+    address: 8
+    icon: "mdi:molecule-co2"
 
-  # coil 12  COIL_SNC – Summer night cooling
+  # coil 9   COIL_RH_BOOST_EN – Enable humidity-triggered automatic fan boost
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Humidity Boosting"
+    id: sw_rh_boost
+    register_type: coil
+    address: 9
+    icon: "mdi:water-percent"
+
+  # coil 12  COIL_SNC – Summer night cooling feature enabled
   - platform: modbus_controller
     modbus_controller_id: pingvin
     name: "Summer Night Cooling"
