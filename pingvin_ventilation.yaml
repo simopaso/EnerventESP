@@ -8,6 +8,13 @@
 #     RX → GPIO18   (ESP32-S3 UART receive)
 #     EN → GPIO21   (DE/RE flow-control for half-duplex RS485)
 #
+# ── Board power ────────────────────────────────────────────
+#   USB-C 5 V  (development / easiest permanent option)
+#   DC screw terminal 7–36 V  (connect Pingvin aux supply directly,
+#                               no DC-DC converter needed)
+#   The RS485 interface is optically isolated — ESP32 ground is
+#   electrically separate from the Pingvin RS485 ground.
+#
 # ── External Wiring to the Enervent Pingvin Motherboard ────
 #   On the Pingvin motherboard locate the Modbus/RS485 connector
 #   (typically labeled A/B or +/-).

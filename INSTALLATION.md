@@ -8,9 +8,9 @@ Enervent Pingvin Kotilämpö eAir — Waveshare ESP32-S3-RS485-CAN
 
 | Item | Notes |
 |---|---|
-| Waveshare ESP32-S3-RS485-CAN board | The onboard RS485 transceiver is pre-wired — no extra module needed |
+| Waveshare ESP32-S3-RS485-CAN board | Isolated RS485 transceiver pre-wired; DIN-rail enclosure included |
 | USB-C cable | For initial flashing only |
-| 5 V USB power supply or USB-C charger | ≥ 500 mA; used for permanent power after flashing |
+| Power supply — choose one option (see Step 8) | USB-C 5 V **or** 7–36 V DC via screw terminal |
 | 2-conductor twisted-pair cable | Standard alarm/doorbell cable works; shielded is better |
 | Small flat-head screwdriver | For the Pingvin terminal block screws |
 | Multimeter | Optional but helpful for verifying polarity |
@@ -25,6 +25,11 @@ Flash the device **before** mounting it near the unit. It is much easier to conn
 cp secrets.yaml.example secrets.yaml   # fill in your details
 esphome run pingvin_ventilation.yaml
 ```
+
+If the board is not detected automatically, enter download mode manually:
+1. Hold the **BOOT** button.
+2. Press and release **RESET** while still holding BOOT.
+3. Release **BOOT**.
 
 After the first successful flash, all future updates can be done over Wi-Fi (OTA).
 
@@ -124,10 +129,14 @@ Locate the solder jumper or pin header labelled **120R** or **Term** and close/e
 
 ## Step 8 — Power the ESP32
 
-Connect a 5 V USB-C power supply to the Waveshare board:
+The Waveshare board has two independent power inputs — use whichever is more convenient:
 
-- A standard USB-C phone charger next to the unit is the simplest option.
-- The Pingvin motherboard has auxiliary low-voltage power, but using it requires a DC-DC converter and is not recommended for a first installation.
+| Option | Input | Notes |
+|---|---|---|
+| **USB-C** | 5 V | Easiest for first install; any phone charger works |
+| **DC screw terminal** | 7–36 V DC | Accepts the Pingvin's auxiliary supply voltage directly — no converter needed |
+
+If the Pingvin motherboard provides a 12 V or 24 V auxiliary output, you can wire it straight to the board's DC screw terminal, avoiding the need for an external USB charger altogether. Check the Enervent installation manual for your model to locate the auxiliary supply terminals and confirm the voltage before connecting.
 
 ---
 
@@ -153,9 +162,10 @@ Connect a 5 V USB-C power supply to the Waveshare board:
 
 ## Mounting the ESP32 Board
 
+- The board ships with a **DIN-rail mountable ABS enclosure** — use it. It protects the board and snaps onto standard 35 mm DIN rail.
 - Keep the board away from mains wiring — maintain at least a few centimetres of separation from any 230 V cables.
-- The board has mounting holes; use nylon standoffs if attaching to a metal surface to avoid shorts.
 - Metal enclosures can attenuate the Wi-Fi signal significantly. If signal is weak, mount the board on the **exterior** of the electronics enclosure, or route just the RS485 cable through a small hole.
+- The RS485 interface is **optically isolated** (optocoupler + power isolation), so the ESP32 ground is electrically separated from the Pingvin's RS485 ground. This makes the connection inherently safer and means a ground loop between the two devices is not a concern.
 
 ---
 
