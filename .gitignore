@@ -1,0 +1,12 @@
+# ESPHome secrets — never commit real credentials
+secrets.yaml
+
+# ESPHome build artifacts
+.esphome/
+build/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*~

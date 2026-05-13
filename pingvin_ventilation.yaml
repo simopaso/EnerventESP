@@ -1,0 +1,738 @@
+# ============================================================
+# Enervent Pingvin Kotilämpö eAir — ESPHome Modbus Integration
+# ============================================================
+#
+# Hardware: Waveshare ESP32-S3-RS485-CAN
+#   RS485 is internally wired on the board:
+#     TX → GPIO17   (ESP32-S3 UART transmit)
+#     RX → GPIO18   (ESP32-S3 UART receive)
+#     EN → GPIO21   (DE/RE flow-control for half-duplex RS485)
+#
+# ── External Wiring to the Enervent Pingvin Motherboard ────
+#   On the Pingvin motherboard locate the Modbus/RS485 connector
+#   (typically labeled A/B or +/-).
+#
+#   Waveshare board      Pingvin motherboard
+#   ─────────────────    ──────────────────────
+#   A  (non-inverting) → A  (non-inverting / +)
+#   B  (inverting)     → B  (inverting / -)
+#   GND                → GND  (connect at one end only)
+#
+# ── Bus Termination ────────────────────────────────────────
+#   RS485 buses require a 120-ohm termination resistor at
+#   EACH physical end of the cable.
+#   • The Pingvin unit has built-in termination on its end.
+#   • If this ESP32 board is the only other node (point-to-
+#     point), enable the onboard 120-ohm jumper on the
+#     Waveshare board to terminate the far end.
+#   • If more RS485 devices exist between the two ends, do
+#     NOT enable the jumper on intermediate nodes.
+#
+# ── Modbus Parameters ──────────────────────────────────────
+#   Protocol : Modbus RTU
+#   Speed    : 19200 bps
+#   Framing  : 8N1  (8 data bits, No parity, 1 stop bit)
+#   Slave ID : 1  (Pingvin default)
+# ============================================================
+
+substitutions:
+  device_name: pingvin-ventilation
+  device_friendly_name: "Enervent Pingvin Ventilation"
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${device_friendly_name}
+
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: arduino
+
+# Disable UART logging so it does not conflict with the RS485 UART
+logger:
+  level: INFO
+  baud_rate: 0
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "Pingvin Fallback"
+    password: !secret fallback_password
+
+captive_portal:
+
+# ── RS485 UART ─────────────────────────────────────────────
+uart:
+  id: modbus_uart
+  tx_pin: GPIO17
+  rx_pin: GPIO18
+  baud_rate: 19200
+  parity: NONE
+  stop_bits: 1
+  data_bits: 8
+
+# ── Modbus bus ─────────────────────────────────────────────
+modbus:
+  id: modbus_bus
+  uart_id: modbus_uart
+  flow_control_pin: GPIO21   # Toggles DE/RE for half-duplex RS485
+
+# ── Modbus controller (Pingvin = slave address 1) ──────────
+modbus_controller:
+  - id: pingvin
+    address: 0x01
+    modbus_id: modbus_bus
+    setup_priority: -10
+    update_interval: 15s
+    command_throttle: 50ms   # Pause between sequential requests
+
+# ============================================================
+# SENSORS  (Read-Only holding registers)
+#
+# Type mapping from CSV → ESPHome value_type:
+#   int16  → S_WORD  (signed 16-bit)
+#   uint16 → U_WORD  (unsigned 16-bit)
+#
+# Multiplier 10 in CSV means the raw register value equals
+# (actual value × 10).  Apply "- multiply: 0.1" to convert.
+# ============================================================
+sensor:
+
+  # ── Temperatures ─────────────────────────────────────────
+  # hreg 1  HREG_T_OP1   int16  ×10  TE20 – Room temp at operator panel 1
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Room Temperature (Panel 1)"
+    id: room_temp_op1
+    register_type: holding
+    address: 1
+    value_type: S_WORD
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+
+  # hreg 2  HREG_T_OP2   int16  ×10  TE21 – Room temp at operator panel 2
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Room Temperature (Panel 2)"
+    id: room_temp_op2
+    register_type: holding
+    address: 2
+    value_type: S_WORD
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+
+  # hreg 46  HREG_ROOM_TEMP  int16  ×10  Average of all room sensors
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Room Temperature Average"
+    id: room_temp_avg
+    register_type: holding
+    address: 46
+    value_type: S_WORD
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+
+  # hreg 6   HREG_T_FRS       int16  ×10  TE01 – Outside / fresh air
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Outside Air Temperature"
+    id: outside_air_temp
+    register_type: holding
+    address: 6
+    value_type: S_WORD
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+
+  # hreg 134  HREG_TE01_24H_AVG  int16  ×10  24-hour average outside temp
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Outside Temperature (24h Average)"
+    id: outside_temp_24h_avg
+    register_type: holding
+    address: 134
+    value_type: S_WORD
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+
+  # hreg 7   HREG_T_SPLY_LTO  int16  ×10  TE05 – Supply air after heat recovery
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Supply Air Temperature (After HRC)"
+    id: supply_air_temp_after_hrc
+    register_type: holding
+    address: 7
+    value_type: S_WORD
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+
+  # hreg 8   HREG_T_SPLY      int16  ×10  TE10 – Supply air after heater
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Supply Air Temperature"
+    id: supply_air_temp
+    register_type: holding
+    address: 8
+    value_type: S_WORD
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+
+  # hreg 10  HREG_T_EXT       int16  ×10  TE30 – Extract air from building
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Extract Air Temperature"
+    id: extract_air_temp
+    register_type: holding
+    address: 10
+    value_type: S_WORD
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+
+  # hreg 9   HREG_T_WST       int16  ×10  TE32 – Exhaust / waste air
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Exhaust Air Temperature"
+    id: exhaust_air_temp
+    register_type: holding
+    address: 9
+    value_type: S_WORD
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+
+  # hreg 48  HREG_DISPLAY_SP  int16  ×10  Setpoint currently shown on display
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Supply Air Setpoint (Display)"
+    id: supply_air_setpoint_readback
+    register_type: holding
+    address: 48
+    value_type: S_WORD
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+
+  # ── Fan Speeds ───────────────────────────────────────────
+  # hreg 3   HREG_EFFECTIVE_TF  uint16  ×1  Supply fan speed %
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Supply Fan Speed"
+    id: supply_fan_speed
+    register_type: holding
+    address: 3
+    value_type: U_WORD
+    unit_of_measurement: "%"
+    state_class: measurement
+    accuracy_decimals: 0
+    icon: "mdi:fan"
+
+  # hreg 4   HREG_EFFECTIVE_PF  uint16  ×1  Exhaust fan speed %
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Exhaust Fan Speed"
+    id: exhaust_fan_speed
+    register_type: holding
+    address: 4
+    value_type: U_WORD
+    unit_of_measurement: "%"
+    state_class: measurement
+    accuracy_decimals: 0
+    icon: "mdi:fan"
+
+  # ── Humidity ─────────────────────────────────────────────
+  # hreg 13  HREG_HUM_EXT   uint16  ×1  RH30 – Extract air relative humidity
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Extract Air Humidity"
+    id: extract_air_humidity
+    register_type: holding
+    address: 13
+    value_type: U_WORD
+    unit_of_measurement: "%"
+    device_class: humidity
+    state_class: measurement
+    accuracy_decimals: 0
+
+  # hreg 35  HREG_RH_MEAN   uint16  ×1  48-hour average humidity (updated hourly)
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Average Air Humidity (48h)"
+    id: avg_air_humidity_48h
+    register_type: holding
+    address: 35
+    value_type: U_WORD
+    unit_of_measurement: "%"
+    device_class: humidity
+    state_class: measurement
+    accuracy_decimals: 0
+
+  # ── Filter Pressure Differences ──────────────────────────
+  # hreg 14  HREG_PRES_SPLYF  uint16  ×1  Pressure diff across supply filter (Pa)
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Supply Filter Pressure Difference"
+    id: supply_filter_pressure
+    register_type: holding
+    address: 14
+    value_type: U_WORD
+    unit_of_measurement: "Pa"
+    state_class: measurement
+    accuracy_decimals: 0
+    icon: "mdi:air-filter"
+
+  # hreg 15  HREG_PRES_EXTF  uint16  ×1  Pressure diff across exhaust filter (Pa)
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Exhaust Filter Pressure Difference"
+    id: exhaust_filter_pressure
+    register_type: holding
+    address: 15
+    value_type: U_WORD
+    unit_of_measurement: "Pa"
+    state_class: measurement
+    accuracy_decimals: 0
+    icon: "mdi:air-filter"
+
+  # ── Heat Recovery Efficiency ─────────────────────────────
+  # hreg 29  HREG_LTO_N_SPLY  uint16  ×1  HRC supply-side efficiency %
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Heat Recovery Efficiency (Supply)"
+    id: hrc_efficiency_supply
+    register_type: holding
+    address: 29
+    value_type: U_WORD
+    unit_of_measurement: "%"
+    state_class: measurement
+    accuracy_decimals: 0
+    icon: "mdi:recycle"
+
+  # hreg 30  HREG_LTO_N_EXT   uint16  ×1  HRC exhaust-side efficiency %
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Heat Recovery Efficiency (Exhaust)"
+    id: hrc_efficiency_exhaust
+    register_type: holding
+    address: 30
+    value_type: U_WORD
+    unit_of_measurement: "%"
+    state_class: measurement
+    accuracy_decimals: 0
+    icon: "mdi:recycle"
+
+  # ── Temperature Controller ───────────────────────────────
+  # hreg 49  HREG_OUTPUT  int16  ×1
+  # Meaning: -200..-101 = extra cooling, -100..-1 = cooling,
+  #          0 = idle, 1..100 = heat recovery, 101..200 = heating
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Temperature Controller Output"
+    id: temp_controller_output
+    register_type: holding
+    address: 49
+    value_type: S_WORD
+    unit_of_measurement: "%"
+    state_class: measurement
+    accuracy_decimals: 0
+    icon: "mdi:thermometer-lines"
+
+  # ── Temperature Controller Mode (hreg 45 HREG_EXTMODE) ──
+  # Raw enumeration: 0=None, 1=Cooling, 2=HRC, 4=Heating,
+  #                  7=Startup, 8=Dehumidification
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Temperature Control Mode (Raw)"
+    id: temp_control_mode_raw
+    register_type: holding
+    address: 45
+    value_type: U_WORD
+    accuracy_decimals: 0
+    icon: "mdi:thermostat"
+
+# ── Text Sensor — decode temperature control mode ─────────
+text_sensor:
+  - platform: template
+    name: "Temperature Control Mode"
+    id: temp_control_mode_text
+    icon: "mdi:thermostat"
+    lambda: |-
+      switch ((int) id(temp_control_mode_raw).state) {
+        case 0:  return {"Idle"};
+        case 1:  return {"Cooling"};
+        case 2:  return {"Heat Recovery"};
+        case 4:  return {"Heating"};
+        case 7:  return {"Startup"};
+        case 8:  return {"Dehumidification"};
+        default: return {"Unknown"};
+      }
+
+# ============================================================
+# BINARY SENSORS  (Read-Only status)
+# ============================================================
+binary_sensor:
+
+  # ── Status bits from HREG_MODE (hreg 44, bitfield) ───────
+  # Bit 0 : Max cooling active
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Status: Max Cooling Active"
+    id: status_max_cooling
+    register_type: holding
+    address: 44
+    bitmask: 0x0001
+    device_class: cold
+
+  # Bit 1 : Max heating active
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Status: Max Heating Active"
+    id: status_max_heating
+    register_type: holding
+    address: 44
+    bitmask: 0x0002
+    device_class: heat
+
+  # Bit 2 : Stopped due to A alarm
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Status: Stopped by Alarm"
+    id: status_stopped_alarm
+    register_type: holding
+    address: 44
+    bitmask: 0x0004
+    device_class: problem
+
+  # Bit 3 : Stopped by user request (no alarm)
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Status: Machine Stopped"
+    id: status_machine_stopped
+    register_type: holding
+    address: 44
+    bitmask: 0x0008
+    device_class: running
+    # Note: device_class "running" — inverted; true means machine IS stopped
+
+  # Bit 4 : Away mode active
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Status: Away Mode Active"
+    id: status_away_active
+    register_type: holding
+    address: 44
+    bitmask: 0x0010
+
+  # Bit 6 : Temperature boost active
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Status: Temperature Boosting"
+    id: status_temp_boosting
+    register_type: holding
+    address: 44
+    bitmask: 0x0040
+
+  # Bit 9 : Manual boost active
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Status: Manual Boost Active"
+    id: status_manual_boost
+    register_type: holding
+    address: 44
+    bitmask: 0x0200
+
+  # Bit 14 : Summer night cooling active
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Status: Summer Night Cooling"
+    id: status_snc_active
+    register_type: holding
+    address: 44
+    bitmask: 0x4000
+
+  # Bit 15 : HRC defrost active
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Status: HRC Defrosting"
+    id: status_hrc_defrost
+    register_type: holding
+    address: 44
+    bitmask: 0x8000
+
+  # ── Coil-based status (operational state, read-only here) ─
+  # coil 30  COIL_LTO_ON  – Heat recovery wheel running
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Heat Recovery Running"
+    id: hrc_running
+    register_type: coil
+    address: 30
+    device_class: running
+
+  # coil 32  COIL_HEAT_ON  – After-heater element active
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Supply Air Heater Active"
+    id: heater_active
+    register_type: coil
+    address: 32
+    device_class: heat
+
+  # coil 41  COIL_ALARM_A  – Class A alarm active (machine stopped)
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Alarm A Active"
+    id: alarm_a_active
+    register_type: coil
+    address: 41
+    device_class: problem
+
+  # coil 42  COIL_ALARM_B  – Class B alarm active (warning)
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Alarm B Active"
+    id: alarm_b_active
+    register_type: coil
+    address: 42
+    device_class: problem
+
+# ============================================================
+# NUMBER  (Writable holding register)
+#
+# hreg 135  HREG_T_SETPOINT  int16  ×10  bounds: 0–500 raw (0–50 °C)
+#
+# "multiply: 10" tells ESPHome to multiply the user's °C value
+# by 10 before writing to the register (and divide by 10 when
+# reading back), matching the ×10 raw encoding in the CSV.
+# ============================================================
+number:
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Supply Air Temperature Setpoint"
+    id: supply_air_setpoint
+    register_type: holding
+    address: 135
+    value_type: S_WORD
+    unit_of_measurement: "°C"
+    device_class: temperature
+    min_value: 10.0
+    max_value: 30.0
+    step: 0.5
+    multiply: 10.0
+    mode: slider
+    icon: "mdi:thermometer"
+
+# ============================================================
+# SWITCHES  (Writable coils)
+#
+# Each coil is a single Modbus coil register (function codes
+# 01/05).  Writing true → 0xFF00, writing false → 0x0000.
+# ============================================================
+switch:
+
+  # coil 0   COIL_STOP – Stop the ventilation unit
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Stop Machine"
+    id: sw_stop
+    register_type: coil
+    address: 0
+    icon: "mdi:stop-circle-outline"
+
+  # coil 1   COIL_AWAY – Away mode (reduced ventilation)
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Away Mode"
+    id: sw_away
+    register_type: coil
+    address: 1
+    icon: "mdi:home-export-outline"
+
+  # coil 2   COIL_AWAYL – Away long mode (extended absence)
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Away Long Mode"
+    id: sw_away_long
+    register_type: coil
+    address: 2
+    icon: "mdi:home-off-outline"
+
+  # coil 6   COIL_MAX_H – Force maximum heating
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Max Heating"
+    id: sw_max_heating
+    register_type: coil
+    address: 6
+    icon: "mdi:fire"
+
+  # coil 7   COIL_MAX_C – Force maximum cooling
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Max Cooling"
+    id: sw_max_cooling
+    register_type: coil
+    address: 7
+    icon: "mdi:snowflake"
+
+  # coil 8   COIL_CO2_BOOST_EN – Enable CO₂-triggered fan boost
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "CO₂ Boosting"
+    id: sw_co2_boost
+    register_type: coil
+    address: 8
+    icon: "mdi:molecule-co2"
+
+  # coil 9   COIL_RH_BOOST_EN – Enable humidity-triggered fan boost
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Humidity Boosting"
+    id: sw_rh_boost
+    register_type: coil
+    address: 9
+    icon: "mdi:water-percent"
+
+  # coil 10  COIL_M_BOOST – Manual boost: fans to 100% for a timed period
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Manual Boost (100%)"
+    id: sw_manual_boost
+    register_type: coil
+    address: 10
+    icon: "mdi:fan-chevron-up"
+
+  # coil 11  COIL_TEMP_BOOST_EN – Temperature boosting enabled
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Temperature Boost"
+    id: sw_temp_boost
+    register_type: coil
+    address: 11
+    icon: "mdi:thermometer-high"
+
+  # coil 12  COIL_SNC – Summer night cooling
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Summer Night Cooling"
+    id: sw_snc
+    register_type: coil
+    address: 12
+    icon: "mdi:weather-night"
+
+  # coil 18  COIL_AWAY_H – Allow supply air heating while in Away mode
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Heating in Away Mode"
+    id: sw_away_heating
+    register_type: coil
+    address: 18
+    icon: "mdi:fire"
+
+  # coil 19  COIL_AWAY_C – Allow supply air cooling while in Away mode
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Cooling in Away Mode"
+    id: sw_away_cooling
+    register_type: coil
+    address: 19
+    icon: "mdi:snowflake"
+
+  # coil 36  COIL_TEMP_DECREASE – Temperature decrease function
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Temperature Decrease"
+    id: sw_temp_decrease
+    register_type: coil
+    address: 36
+    icon: "mdi:thermometer-low"
+
+  # coil 40  COIL_ECO_MODE – Eco mode
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Eco Mode"
+    id: sw_eco_mode
+    register_type: coil
+    address: 40
+    icon: "mdi:leaf"
+
+  # coil 47  COIL_SILENT_MODE – Silent mode (reduced noise)
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Silent Mode"
+    id: sw_silent_mode
+    register_type: coil
+    address: 47
+    icon: "mdi:volume-off"
+
+  # coil 52  COIL_COOLING_EN – Active cooling of supply air enabled
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Cooling Enabled"
+    id: sw_cooling_en
+    register_type: coil
+    address: 52
+    icon: "mdi:snowflake-check"
+
+  # coil 54  COIL_HEATING_EN – Active heating of supply air enabled
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "Heating Enabled"
+    id: sw_heating_en
+    register_type: coil
+    address: 54
+    icon: "mdi:radiator"
+
+  # coil 55  COIL_LTO_DEFROST_EN – HRC defrost during winter enabled
+  - platform: modbus_controller
+    modbus_controller_id: pingvin
+    name: "HRC Defrosting Enabled"
+    id: sw_lto_defrost
+    register_type: coil
+    address: 55
+    icon: "mdi:snowflake-off"
